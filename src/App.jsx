@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Mail, Printer, Trash2, Plus, Check, X, FileSignature, Clock, Calendar, User } from 'lucide-react';
+import { PenTool, Mail, Printer, Trash2, Plus, Check, X, FileSignature, Clock, Calendar, User, Save } from 'lucide-react';
 
 const SignaturePad = ({ onSave, onCancel, title }) => {
   const canvasRef = useRef(null);
@@ -167,6 +167,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [lessonToDelete, setLessonToDelete] = useState(null);
   const [isTailwindLoaded, setIsTailwindLoaded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   const [currentName, setCurrentName] = useState('');
   const [currentDuration, setCurrentDuration] = useState('1');
@@ -175,6 +176,9 @@ export default function App() {
   const [teacherSignature, setTeacherSignature] = useState(null);
 
   const durations = ['1', '1.25', '1.5', '1.75', '2', '2.25', '2.5', '3'];
+  
+  // *** הכתובת של ה-Apps Script שהגדרת ***
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzlOsVnkaPGLzcXPWCljbedbjhBpwsyX_jrQfKARJQ_d36NkhUzNCLe5xywHVgwr0fz/exec';
 
   // הזרקת Tailwind CSS בצורה אוטומטית כדי לוודא עיצוב תקין בכל סביבה
   useEffect(() => {
@@ -225,6 +229,42 @@ export default function App() {
   const confirmDelete = () => {
     setLessons(lessons.filter(l => l.id !== lessonToDelete));
     setLessonToDelete(null);
+  };
+
+  const saveToGoogleSheets = async () => {
+    if (lessons.length === 0) {
+        alert("אין נתונים לשמירה");
+        return;
+    }
+
+    setIsSaving(true);
+    
+    try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify(lessons),
+            // Important: Use text/plain to avoid CORS preflight issues with Apps Script
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            alert("הנתונים נשמרו בהצלחה!");
+            // Optional: clear lessons after successful save
+            // setLessons([]); 
+        } else {
+            console.error("Error from Apps Script:", result.message);
+            alert("שגיאה בשמירת הנתונים. אנא נסה שוב.");
+        }
+    } catch (error) {
+        console.error("Network or parsing error:", error);
+        alert("שגיאת תקשורת. לא ניתן היה להתחבר לשרת.");
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const sendEmail = () => {
@@ -457,6 +497,13 @@ export default function App() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 print:hidden pt-4">
+             <button 
+              onClick={saveToGoogleSheets}
+              disabled={lessons.length === 0 || isSaving}
+              className="flex-1 py-4 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 text-lg"
+            >
+              <Save size={22} /> {isSaving ? "שומר..." : "סנכרן נתונים לאקסל"}
+            </button>
             <button 
               onClick={sendEmail}
               disabled={lessons.length === 0}
