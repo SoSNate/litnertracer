@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Mail, Printer, Trash2, Plus, Check, X, FileSignature, Clock, Calendar, User, Save, Smartphone, ChevronDown, ChevronUp, History } from 'lucide-react';
+import { PenTool, Mail, Printer, Trash2, Plus, Check, X, FileSignature, Clock, Calendar, User, Save, Smartphone, History, ChevronDown, ChevronUp } from 'lucide-react';
 
+// רכיב לוח החתימה
 const SignaturePad = ({ onSave, onCancel, title }) => {
   const canvasRef = useRef(null);
   const contextRef = useRef(null);
@@ -124,7 +125,12 @@ export default function App() {
   const [isTailwindLoaded, setIsTailwindLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
   
+  // מצבי הצהרה וחתימת מורה
+  const [isDeclared, setIsDeclared] = useState(false);
+  const [teacherSignature, setTeacherSignature] = useState(null);
+
   const getCurrentMonthString = () => {
     const d = new Date();
     return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
@@ -134,21 +140,24 @@ export default function App() {
   const [availableMonths, setAvailableMonths] = useState([getCurrentMonthString()]);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
-  const [isTableExpanded, setIsTableExpanded] = useState(false);
+  
   const [currentName, setCurrentName] = useState('');
   const [currentDuration, setCurrentDuration] = useState('1');
   
+  // תיקון בעיית התאריך שזז - שימוש בערכים מקומיים בלבד
   const getDefaultDateForViewMonth = () => {
     const [m, y] = viewMonth.split('-');
     const now = new Date();
     if (parseInt(m) === (now.getMonth() + 1) && parseInt(y) === now.getFullYear()) {
-      return now.toISOString().split('T')[0];
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
     return `${y}-${m}-01`;
   };
 
   const [currentDate, setCurrentDate] = useState(getDefaultDateForViewMonth());
-  const [teacherSignature, setTeacherSignature] = useState(null);
 
   const getEndOfViewMonth = () => {
     const [m, y] = viewMonth.split('-');
@@ -158,10 +167,15 @@ export default function App() {
 
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbynmOheXpJBbRNhd5p7plzWCfv6fzOTupcVBsKz6U353F3fg2YeLsse-eRbEbu_R9HQ/exec';
 
+  // הצעות תלמידים על בסיס נתונים קיימים
+  const studentSuggestions = [...new Set(lessons.map(l => l.name))];
+
+  // פורמט תאריך חסין אזורי זמן
   const formatDisplayDate = (dateStr) => {
     if (!dateStr) return "";
     if (dateStr.includes('/')) return dateStr;
-    const parts = dateStr.split('T')[0].split('-');
+    const cleanDate = dateStr.split('T')[0];
+    const parts = cleanDate.split('-');
     if (parts.length === 3) {
       return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
@@ -177,9 +191,9 @@ export default function App() {
             body: JSON.stringify({ month: viewMonth, lessons: dataToSync })
         });
         const result = await response.json();
-        if (result.status !== 'success') console.error("Sync failed");
+        if (result.status !== 'success') console.error("Sync error:", result.message);
     } catch (error) { 
-        console.error("Sync error:", error); 
+        console.error("Connection error:", error); 
     } finally { 
         setIsSaving(false); 
     }
@@ -191,15 +205,20 @@ export default function App() {
       const response = await fetch(`${APPS_SCRIPT_URL}?month=${monthToFetch}`);
       const result = await response.json();
       if (result.status === 'success') {
-        setLessons(result.lessons || []);
+        // מניעת כפילויות במפתחות על ידי יצירת ID ייחודי
+        const sanitized = (result.lessons || []).map((l, i) => ({
+          ...l,
+          id: l.id || `srv-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 5)}`
+        }));
+        setLessons(sanitized);
         if (result.availableMonths) {
-          const allMonths = Array.from(new Set([getCurrentMonthString(), ...result.availableMonths]));
-          allMonths.sort((a, b) => {
+          const all = Array.from(new Set([getCurrentMonthString(), ...result.availableMonths]));
+          all.sort((a, b) => {
             const [m1, y1] = a.split('-');
             const [m2, y2] = b.split('-');
             return new Date(y2, m2 - 1) - new Date(y1, m1 - 1);
           });
-          setAvailableMonths(allMonths);
+          setAvailableMonths(all);
         }
       }
     } catch (error) {
@@ -234,7 +253,7 @@ export default function App() {
 
   const openStudentSignature = () => {
     if (!currentName.trim()) {
-      setErrorMsg("שים לב: חובה להזין שם תלמיד/ה לפני החתימה");
+      setErrorMsg("חובה להזין שם תלמיד/ה");
       return;
     }
     setErrorMsg('');
@@ -243,19 +262,20 @@ export default function App() {
   };
 
   const openTeacherSignature = () => {
+    if (!isDeclared) return;
     setSigningType('teacher');
     setIsSigning(true);
   };
 
   const handleSaveSignature = async (signatureData) => {
     const type = signingType;
-    // סגירה מיידית למניעת כפילויות
     setIsSigning(false);
     setSigningType(null);
 
     if (type === 'student') {
+      const uniqueId = `L-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       const newLesson = {
-        id: Date.now(),
+        id: uniqueId,
         name: currentName,
         duration: currentDuration,
         date: currentDate,
@@ -300,7 +320,7 @@ export default function App() {
   if (isLoading) return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4" dir="rtl">
       <div className="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin mb-4"></div>
-      <h2 className="text-lg font-bold text-slate-700">מושך נתונים מחודש {viewMonth}...</h2>
+      <h2 className="text-lg font-bold text-slate-700 font-sans">טוען נתונים...</h2>
     </div>
   );
 
@@ -308,6 +328,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans print:bg-white pb-20" dir="rtl">
+      
+      {/* Header */}
       <header className="bg-slate-900 text-white pt-10 pb-6 px-4 shadow-lg rounded-b-3xl print:hidden relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-teal-500/10 pointer-events-none"></div>
         <div className="max-w-3xl mx-auto relative z-10 flex flex-col gap-4">
@@ -320,14 +342,34 @@ export default function App() {
           </div>
           <div className="bg-slate-800/80 p-1.5 rounded-xl border border-slate-700/50 inline-flex items-center gap-2 self-start">
             <History size={16} className="text-slate-400 mr-2" />
-            <select value={viewMonth} onChange={(e) => setViewMonth(e.target.value)} className="bg-transparent text-white font-bold text-xs outline-none cursor-pointer appearance-none pl-4">
-              {availableMonths.map(m => <option key={m} value={m} className="bg-slate-800 text-white">חודש {m}</option>)}
+            <select value={viewMonth} onChange={(e) => setViewMonth(e.target.value)} className="bg-transparent text-white font-bold text-xs outline-none cursor-pointer appearance-none pl-4 pr-1">
+              {availableMonths.map(m => (
+                <option key={`month-${m}`} value={m} className="bg-slate-800 text-white">חודש {m}</option>
+              ))}
             </select>
           </div>
         </div>
       </header>
 
+      {/* Print Header Logo */}
+      <div className="hidden print:flex items-center justify-between mb-8 border-b-2 border-slate-900 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-slate-900 text-white p-2 rounded-lg">
+            <FileSignature size={32} />
+          </div>
+          <div className="text-right">
+            <h1 className="text-2xl font-black">LEITNER TRACKER</h1>
+            <p className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">Monthly Attendance Reporting</p>
+          </div>
+        </div>
+        <div className="text-left text-sm font-bold text-slate-700">
+           דוח שעות חודשי - {viewMonth}
+        </div>
+      </div>
+
       <main className="max-w-3xl mx-auto p-4 space-y-6 -mt-4 relative z-20">
+        
+        {/* Form Section */}
         <section className="bg-white rounded-3xl shadow-md border border-slate-100 p-5 print:hidden">
           <h2 className="text-md font-bold text-slate-800 mb-5 flex items-center gap-2">
             <div className="bg-teal-100 text-teal-600 p-1 rounded-lg"><Plus size={16} /></div> הזנה לחודש {viewMonth}
@@ -335,7 +377,17 @@ export default function App() {
           <div className="space-y-4 mb-5">
             <div>
               <label className="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-1"><User size={14} /> שם תלמיד/ה</label>
-              <input type="text" value={currentName} onChange={(e) => setCurrentName(e.target.value)} placeholder="הקלד שם..." className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none" />
+              <input 
+                list="students-list"
+                type="text" 
+                value={currentName} 
+                onChange={(e) => setCurrentName(e.target.value)} 
+                placeholder="הקלד שם או בחר..." 
+                className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none" 
+              />
+              <datalist id="students-list">
+                {studentSuggestions.map(name => <option key={name} value={name} />)}
+              </datalist>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -350,10 +402,11 @@ export default function App() {
               </div>
             </div>
           </div>
-          {errorMsg && <div className="mb-4 text-red-500 text-xs text-center">{errorMsg}</div>}
+          {errorMsg && <div className="mb-4 text-red-500 text-xs text-center font-bold">{errorMsg}</div>}
           <button onClick={openStudentSignature} className="w-full py-3.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"><PenTool size={20} /> החתם ושמור</button>
         </section>
 
+        {/* Lessons Table */}
         <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-none print:shadow-none">
           <div className="p-4 bg-slate-800 text-white flex justify-between items-center print:bg-transparent print:text-slate-900 print:mb-4">
             <h2 className="font-bold">טבלת שיעורים</h2>
@@ -361,32 +414,35 @@ export default function App() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-right border-collapse">
-              <thead className="bg-slate-50 text-xs border-b">
+              <thead className="bg-slate-50 text-[10px] border-b">
                 <tr>
-                  <th className="p-3 border-l w-10 text-center">#</th>
+                  <th className="p-3 border-l w-10 text-center font-black">#</th>
                   <th className="p-3 border-l">תלמיד/ה</th>
-                  <th className="p-3 border-l w-16">משך</th>
-                  <th className="p-3 border-l w-24">תאריך</th>
-                  <th className="p-3">חתימה</th>
+                  <th className="p-3 border-l w-16 text-center">משך</th>
+                  <th className="p-3 border-l w-24 text-center">תאריך</th>
+                  <th className="p-3 text-center">חתימת תלמיד</th>
                   <th className="p-3 print:hidden w-10 text-center"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {displayed.map((l, i) => (
-                  <tr key={l.id} className="hover:bg-slate-50">
-                    <td className="p-3 text-center border-l text-slate-400">{isTableExpanded ? i + 1 : lessons.length}</td>
-                    <td className="p-3 font-bold border-l">{l.name}</td>
-                    <td className="p-3 border-l">{l.duration} ש'</td>
-                    <td className="p-3 border-l whitespace-nowrap">{formatDisplayDate(l.date)}</td>
-                    <td className="p-2"><img src={l.signature} alt="ח" className="h-10 mx-auto object-contain" /></td>
-                    <td className="p-2 text-center print:hidden"><button onClick={() => setLessonToDelete(l.id)} className="text-red-300 hover:text-red-500"><Trash2 size={16} /></button></td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-100 text-[13px]">
+                {displayed.map((l, i) => {
+                  const actualIdx = lessons.findIndex(item => item.id === l.id);
+                  return (
+                    <tr key={l.id} className="hover:bg-slate-50">
+                      <td className="p-3 text-center border-l text-slate-400 font-bold">{actualIdx + 1}</td>
+                      <td className="p-3 font-bold border-l">{l.name}</td>
+                      <td className="p-3 border-l text-center">{l.duration} ש'</td>
+                      <td className="p-3 border-l text-center whitespace-nowrap">{formatDisplayDate(l.date)}</td>
+                      <td className="p-2"><img src={l.signature} alt="Signature" className="h-10 mx-auto object-contain" /></td>
+                      <td className="p-2 text-center print:hidden"><button onClick={() => setLessonToDelete(l.id)} className="text-red-300 hover:text-red-500 transition-colors"><Trash2 size={18} /></button></td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot className="bg-slate-50 font-bold text-sm">
                 <tr>
-                  <td colSpan="2" className="p-3 text-left">סה"כ:</td>
-                  <td className="p-3 text-teal-700">{lessons.reduce((s, l) => s + parseFloat(l.duration), 0)} ש'</td>
+                  <td colSpan="2" className="p-3 text-left border-l">סה"כ שעות:</td>
+                  <td className="p-3 text-teal-700 text-lg text-center border-l">{lessons.reduce((s, l) => s + parseFloat(l.duration), 0)} ש'</td>
                   <td colSpan="3"></td>
                 </tr>
               </tfoot>
@@ -394,34 +450,110 @@ export default function App() {
           </div>
         </section>
 
-        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 print:mt-10">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-2xl print:p-0 print:bg-transparent">
-              אני מצהיר שכל הפרטים נכונים ומאשר אותם.<br/>
-              <strong>נתנאל</strong> | 053-5303607
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 print:hidden">
-              <button onClick={sendEmail} disabled={lessons.length === 0} className="flex-1 py-3.5 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg"><Mail size={18} /> מייל</button>
-              <button onClick={printReport} disabled={lessons.length === 0} className="flex-1 py-3.5 bg-white border-2 border-slate-200 rounded-xl font-bold flex items-center justify-center gap-2"><Printer size={18} /> הדפס</button>
+        {/* Declaration and Teacher Signature */}
+        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 print:border-none print:shadow-none print:mt-4">
+          <div className="space-y-6">
+            <div className="bg-slate-50 p-5 rounded-2xl border-2 border-slate-100 print:bg-white print:border-none print:p-0">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="pt-1 print:hidden">
+                  <input 
+                    type="checkbox" 
+                    id="declare-check" 
+                    checked={isDeclared}
+                    onChange={(e) => setIsDeclared(e.target.checked)}
+                    className="w-6 h-6 accent-teal-600 rounded cursor-pointer"
+                  />
+                </div>
+                <label htmlFor="declare-check" className="text-[13px] font-bold text-slate-700 leading-relaxed cursor-pointer select-none">
+                   אני מצהיר בזה כי כל הפרטים הרשומים לעיל הינם נכונים ומדויקים למיטב ידיעתי, וכי כל שעות ההוראה המדווחות בוצעו בפועל כנדרש.
+                </label>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row justify-between items-end gap-6">
+                <div className="text-sm text-slate-500 space-y-1">
+                  <p><strong>מורה מדווח:</strong> נתנאל</p>
+                  <p><strong>טלפון:</strong> 053-5303607</p>
+                  <div className="flex items-center gap-2 pt-2 print:hidden">
+                    <span className="font-bold text-xs text-slate-600">תאריך:</span>
+                    <input type="date" value={declarationDate} onChange={(e) => setDeclarationDate(e.target.value)} className="p-1 rounded border text-[10px] outline-none" />
+                  </div>
+                  <p className="hidden print:block pt-1"><strong>תאריך דיווח:</strong> {formatDisplayDate(declarationDate)}</p>
+                </div>
+
+                <div className="w-full sm:w-48 text-center space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1">חתימת מורה</p>
+                  <div className="h-24 bg-white border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center overflow-hidden relative group">
+                    {teacherSignature ? (
+                      <img src={teacherSignature} alt="Teacher Signature" className="h-full object-contain" />
+                    ) : (
+                      <button 
+                        onClick={openTeacherSignature}
+                        disabled={!isDeclared}
+                        className="w-full h-full text-slate-300 hover:text-teal-500 hover:bg-teal-50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <PenTool size={20} />
+                        <span className="text-[10px] font-bold">לחץ לחתימה</span>
+                      </button>
+                    )}
+                    {teacherSignature && (
+                      <button 
+                        onClick={() => setTeacherSignature(null)}
+                        className="absolute top-1 left-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity print:hidden"
+                      >
+                        <X size={10} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-            {isSaving && <div className="text-center text-xs text-teal-600 animate-pulse font-bold">סנכרון רקע...</div>}
+
+            <div className="flex flex-col sm:flex-row gap-3 print:hidden pt-2">
+              <button onClick={sendEmail} disabled={lessons.length === 0 || !teacherSignature} className="flex-1 py-4 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all"><Mail size={20} /> שלח במייל</button>
+              <button onClick={printReport} disabled={lessons.length === 0 || !teacherSignature} className="flex-1 py-4 bg-white border-2 border-slate-200 hover:border-slate-300 disabled:opacity-50 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all"><Printer size={20} /> הדפס דוח PDF</button>
+            </div>
+            {isSaving && <div className="text-center text-[10px] text-teal-600 animate-pulse font-black tracking-widest">סנכרון נתונים פעיל...</div>}
           </div>
-          <div className="hidden print:block mt-10 text-center w-48 border-t pt-2 mx-auto">חתימת המורה</div>
         </section>
       </main>
 
-      {isSigning && <SignaturePad title={signingType === 'student' ? `חתימת ${currentName}` : "חתימה"} onSave={handleSaveSignature} onCancel={() => setIsSigning(false)} />}
+      {/* Signature Modals */}
+      {isSigning && (
+        <SignaturePad 
+          title={signingType === 'student' ? `חתימת תלמיד/ה: ${currentName}` : "חתימת מורה: נתנאל"} 
+          onSave={handleSaveSignature} 
+          onCancel={() => { setIsSigning(false); setSigningType(null); }} 
+        />
+      )}
+      
+      {/* Delete Confirmation */}
       {lessonToDelete && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 text-center shadow-xl w-full max-w-xs">
-            <h3 className="font-bold mb-4">מחיקת שיעור?</h3>
-            <div className="flex gap-2">
-              <button onClick={() => setLessonToDelete(null)} className="flex-1 py-2 bg-slate-100 rounded-lg">ביטול</button>
-              <button onClick={confirmDelete} className="flex-1 py-2 bg-red-500 text-white rounded-lg">מחק</button>
+          <div className="bg-white rounded-3xl p-8 text-center shadow-2xl w-full max-w-xs border border-slate-100">
+             <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+               <Trash2 size={32} />
+             </div>
+            <h3 className="font-bold text-lg mb-2 text-slate-800 font-sans">מחיקת שיעור?</h3>
+            <p className="text-slate-500 text-sm mb-6 leading-relaxed font-sans">האם אתה בטוח שברצונך למחוק את הדיווח עבור {lessons.find(l => l.id === lessonToDelete)?.name}?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setLessonToDelete(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors font-sans text-xs">ביטול</button>
+              <button onClick={confirmDelete} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-500/20 transition-all font-sans text-xs">מחק</button>
             </div>
           </div>
         </div>
       )}
+      
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .print\\:hidden { display: none !important; }
+          .print\\:flex { display: flex !important; }
+          .print\\:block { display: block !important; }
+          table { page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          @page { margin: 1cm; }
+        }
+      `}} />
     </div>
   );
 }
