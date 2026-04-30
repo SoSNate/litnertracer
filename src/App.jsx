@@ -193,7 +193,7 @@ export default function App() {
 
   const durations = ['1', '1.25', '1.5', '1.75', '2', '2.25', '2.5', '3'];
   
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzlOsVnkaPGLzcXPWCljbedbjhBpwsyX_jrQfKARJQ_d36NkhUzNCLe5xywHVgwr0fz/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-UNfyflm0KJHdAv_oRFg-ds2vzpjAgev_Gqi-6X89rNgMmhUZiDuRxmLvsM85ogZe/exec';
 
   // PWA - האזנה לאירוע התקנה של הדפדפן
   useEffect(() => {
@@ -281,14 +281,15 @@ export default function App() {
     setIsSaving(true);
     
     try {
-        // שימוש ב-no-cors פותר את בעיית הדפדפן שחוסם, אבל זה אומר שאנחנו לא נקבל את התשובה מהשרת
+        // שימוש ב-no-cors פותר את בעיית הדפדפן שחוסם
         await fetch(APPS_SCRIPT_URL, {
             method: 'POST',
             mode: 'no-cors', 
-            body: JSON.stringify(lessons),
+            redirect: 'follow', // חשוב כדי לעקוב אחרי הפניות פנימיות של גוגל
             headers: {
-                'Content-Type': 'text/plain;charset=utf-8',
-            }
+                'Content-Type': 'text/plain', // הפורמט הבטוח ביותר למניעת חסימת דפדפן
+            },
+            body: JSON.stringify(lessons)
         });
         
         // בגלל no-cors, אנחנו מניחים שהשמירה הצליחה אם ה-fetch לא זרק שגיאת רשת
@@ -296,7 +297,7 @@ export default function App() {
         
     } catch (error) {
         console.error("Network error:", error);
-        alert("שגיאת תקשורת מול השרת של גוגל.");
+        alert("שגיאת תקשורת מול השרת של גוגל. ודא שהאפסקריפט מוגדר כ-Anyone.");
     } finally {
         setIsSaving(false);
     }
