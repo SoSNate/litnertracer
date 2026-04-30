@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Mail, Printer, Trash2, Plus, Check, X, FileSignature, Clock, Calendar, User, Save, Smartphone, ChevronDown, ChevronUp } from 'lucide-react';
+import { PenTool, Mail, Printer, Trash2, Plus, Check, X, FileSignature, Clock, Calendar, User, Save, Smartphone, ChevronDown, ChevronUp, History } from 'lucide-react';
 
 const SignaturePad = ({ onSave, onCancel, title }) => {
   const canvasRef = useRef(null);
@@ -27,12 +27,9 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
 
   useEffect(() => {
     const handleResize = () => setTimeout(resizeCanvas, 50);
-    
     handleResize();
-    
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', handleResize);
-
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
@@ -43,15 +40,9 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     if (event.touches && event.touches.length > 0) {
-      return {
-        x: event.touches[0].clientX - rect.left,
-        y: event.touches[0].clientY - rect.top
-      };
+      return { x: event.touches[0].clientX - rect.left, y: event.touches[0].clientY - rect.top };
     }
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
-    };
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
 
   const startDrawing = (event) => {
@@ -78,7 +69,6 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
     points.push({ x, y });
 
     const ctx = contextRef.current;
-
     if (points.length >= 3) {
       const lastTwo = points.slice(-2);
       const controlPoint = lastTwo[0];
@@ -86,10 +76,8 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
         x: (lastTwo[0].x + lastTwo[1].x) / 2,
         y: (lastTwo[0].y + lastTwo[1].y) / 2,
       };
-      
       ctx.quadraticCurveTo(controlPoint.x, controlPoint.y, endPoint.x, endPoint.y);
       ctx.stroke();
-      
       ctx.beginPath();
       ctx.moveTo(endPoint.x, endPoint.y);
     } else {
@@ -126,34 +114,13 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
         <div className="p-4 bg-slate-50 flex-grow flex flex-col">
           <p className="text-sm text-slate-500 mb-3 text-center">אנא חתום בתוך המסגרת:</p>
           <div className="relative flex-grow bg-white border-2 border-dashed border-teal-300 rounded-2xl overflow-hidden touch-none shadow-inner">
-            <canvas
-              ref={canvasRef}
-              onMouseDown={startDrawing}
-              onMouseUp={finishDrawing}
-              onMouseOut={finishDrawing}
-              onMouseMove={draw}
-              onTouchStart={startDrawing}
-              onTouchEnd={finishDrawing}
-              onTouchCancel={finishDrawing}
-              onTouchMove={draw}
-              className="absolute inset-0 w-full h-full bg-transparent cursor-crosshair touch-none"
-            />
+            <canvas ref={canvasRef} onMouseDown={startDrawing} onMouseUp={finishDrawing} onMouseOut={finishDrawing} onMouseMove={draw} onTouchStart={startDrawing} onTouchEnd={finishDrawing} onTouchCancel={finishDrawing} onTouchMove={draw} className="absolute inset-0 w-full h-full bg-transparent cursor-crosshair touch-none" />
           </div>
         </div>
 
         <div className="p-4 flex gap-3 bg-white border-t border-slate-100">
-          <button 
-            onClick={clearCanvas}
-            className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
-          >
-            נקה מסך
-          </button>
-          <button 
-            onClick={saveSignature}
-            className="flex-1 py-3 px-4 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors flex items-center justify-center gap-2 shadow-md shadow-teal-600/20"
-          >
-            <Check size={18} /> שמור חתימה
-          </button>
+          <button onClick={clearCanvas} className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors">נקה מסך</button>
+          <button onClick={saveSignature} className="flex-1 py-3 px-4 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors flex items-center justify-center gap-2 shadow-md shadow-teal-600/20"><Check size={18} /> שמור חתימה</button>
         </div>
       </div>
     </div>
@@ -168,7 +135,17 @@ export default function App() {
   const [lessonToDelete, setLessonToDelete] = useState(null);
   const [isTailwindLoaded, setIsTailwindLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
+  // ניהול חודשים
+  const getCurrentMonthString = () => {
+    const d = new Date();
+    return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  };
+  
+  const [viewMonth, setViewMonth] = useState(getCurrentMonthString());
+  const [availableMonths, setAvailableMonths] = useState([getCurrentMonthString()]);
+
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   
@@ -176,27 +153,73 @@ export default function App() {
 
   const [currentName, setCurrentName] = useState('');
   const [currentDuration, setCurrentDuration] = useState('1');
-  const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // קביעת תאריך ברירת מחדל לאינפוט לפי החודש שצופים בו עכשיו
+  const getDefaultDateForViewMonth = () => {
+    const [m, y] = viewMonth.split('-');
+    const currentRealMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+    // אם מסתכלים על החודש הנוכחי באמת, נציג את היום. אם על חודש ישן, נציג את ה-1 לחודש ההוא.
+    if (m === currentRealMonth) return new Date().toISOString().split('T')[0];
+    return `${y}-${m}-01`;
+  };
+  const [currentDate, setCurrentDate] = useState(getDefaultDateForViewMonth());
   
   const [teacherSignature, setTeacherSignature] = useState(null);
 
-  const getLastDayOfMonth = () => {
-    const date = new Date();
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
+  // תאריך הצהרה (סוף החודש שבו צופים)
+  const getEndOfViewMonth = () => {
+    const [m, y] = viewMonth.split('-');
+    return new Date(y, parseInt(m), 0).toISOString().split('T')[0];
   };
-  const [declarationDate, setDeclarationDate] = useState(getLastDayOfMonth());
+  const [declarationDate, setDeclarationDate] = useState(getEndOfViewMonth());
+
+  // עדכון התאריכים אם המשתמש מחליף חודש בתצוגה
+  useEffect(() => {
+    setCurrentDate(getDefaultDateForViewMonth());
+    setDeclarationDate(getEndOfViewMonth());
+  }, [viewMonth]);
 
   const durations = ['1', '1.25', '1.5', '1.75', '2', '2.25', '2.5', '3'];
   
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-UNfyflm0KJHdAv_oRFg-ds2vzpjAgev_Gqi-6X89rNgMmhUZiDuRxmLvsM85ogZe/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbynmOheXpJBbRNhd5p7plzWCfv6fzOTupcVBsKz6U353F3fg2YeLsse-eRbEbu_R9HQ/exec';
+
+  // משיכת נתונים לחודש הספציפי
+  const fetchLessons = async (monthToFetch) => {
+    setIsLoading(true);
+    try {
+      // שליחת פרמטר החודש לשרת
+      const response = await fetch(`${APPS_SCRIPT_URL}?month=${monthToFetch}`);
+      const result = await response.json();
+      if (result.status === 'success') {
+        setLessons(result.lessons || []);
+        
+        // עדכון רשימת החודשים הזמינים (כדי להציג ב-dropdown)
+        if (result.availableMonths && result.availableMonths.length > 0) {
+          // נוודא שהחודש הנוכחי תמיד ברשימה למקרה שהוא עדיין לא נוצר באקסל
+          const allMonths = Array.from(new Set([getCurrentMonthString(), ...result.availableMonths]));
+          // מיון מהחדש לישן
+          allMonths.sort((a, b) => {
+            const [m1, y1] = a.split('-');
+            const [m2, y2] = b.split('-');
+            return new Date(y2, m2 - 1) - new Date(y1, m1 - 1);
+          });
+          setAvailableMonths(allMonths);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch lessons:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // קריאה ראשונית ובכל פעם שבוחרים חודש אחר
+  useEffect(() => {
+    fetchLessons(viewMonth);
+  }, [viewMonth]);
 
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setIsInstallable(true);
-    };
-
+    const handleBeforeInstallPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); setIsInstallable(true); };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
@@ -236,7 +259,28 @@ export default function App() {
     setIsSigning(true);
   };
 
-  const handleSaveSignature = (signatureData) => {
+  const syncWithExcel = async (dataToSync) => {
+    setIsSaving(true);
+    try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            // שולחים לשרת תחת איזה חודש לשמור את המידע
+            body: JSON.stringify({ month: viewMonth, lessons: dataToSync })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') {
+            console.error("Error from Excel:", result.message);
+            alert("❌ שגיאה בסנכרון מול האקסל.");
+        }
+    } catch (error) {
+        console.error("Sync error:", error);
+    } finally {
+        setIsSaving(false);
+    }
+  };
+
+  const handleSaveSignature = async (signatureData) => {
     if (signingType === 'student') {
       const newLesson = {
         id: Date.now(),
@@ -245,9 +289,11 @@ export default function App() {
         date: currentDate,
         signature: signatureData
       };
-      setLessons([...lessons, newLesson]);
+      const updatedLessons = [...lessons, newLesson];
+      setLessons(updatedLessons);
       setCurrentName(''); 
       setIsTableExpanded(false);
+      await syncWithExcel(updatedLessons);
     } else if (signingType === 'teacher') {
       setTeacherSignature(signatureData);
     }
@@ -255,48 +301,16 @@ export default function App() {
     setSigningType(null);
   };
 
-  const confirmDelete = () => {
-    setLessons(lessons.filter(l => l.id !== lessonToDelete));
+  const confirmDelete = async () => {
+    const updatedLessons = lessons.filter(l => l.id !== lessonToDelete);
+    setLessons(updatedLessons);
     setLessonToDelete(null);
-  };
-
-  const saveToGoogleSheets = async () => {
-    if (lessons.length === 0) {
-        alert("אין נתונים לשמירה");
-        return;
-    }
-
-    setIsSaving(true);
-    
-    try {
-        // שליחה גלויה לחלוטין - ללא עקיפת הרשאות
-        const response = await fetch(APPS_SCRIPT_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'text/plain;charset=utf-8',
-            },
-            body: JSON.stringify(lessons)
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            alert("✅ הנתונים נשמרו באקסל בהצלחה!");
-        } else {
-            alert("❌ שגיאה מהאקסל: " + result.message);
-        }
-        
-    } catch (error) {
-        console.error("Fetch error details:", error);
-        alert(`❌ שגיאת תקשורת!\n\nתיאור השגיאה: ${error.message}\n\nאם רשום "Failed to fetch", זה אומר שגוגל דחה את הבקשה. ודא שהאפסקריפט מוגדר כ-"Anyone" ולא כ-"Anyone with Google Account".`);
-    } finally {
-        setIsSaving(false);
-    }
+    await syncWithExcel(updatedLessons);
   };
 
   const sendEmail = () => {
-    const subject = `דיווח שעות חודשי - נתנאל (${new Date().getMonth() + 1}/${new Date().getFullYear()})`;
-    let body = `שלום רב,\nלהלן דיווח השעות שלי לחודש זה:\n\n`;
+    const subject = `דיווח שעות חודשי - נתנאל (חודש ${viewMonth})`;
+    let body = `שלום רב,\nלהלן דיווח השעות שלי לחודש ${viewMonth}:\n\n`;
     
     lessons.forEach((lesson, index) => {
       const [year, month, day] = lesson.date.split('-');
@@ -304,7 +318,6 @@ export default function App() {
     });
 
     body += `\nסה"כ שיעורים: ${lessons.length}\n`;
-    
     const totalHours = lessons.reduce((sum, lesson) => sum + parseFloat(lesson.duration), 0);
     body += `סה"כ שעות: ${totalHours}\n\n`;
 
@@ -319,9 +332,7 @@ export default function App() {
 
   const printReport = () => {
     setIsTableExpanded(true);
-    setTimeout(() => {
-      window.print();
-    }, 100);
+    setTimeout(() => { window.print(); }, 100);
   };
 
   if (!isTailwindLoaded) {
@@ -334,31 +345,41 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans print:bg-white pb-20" dir="rtl">
       
       {/* Header */}
-      <header className="bg-slate-900 text-white pt-12 pb-6 px-6 shadow-lg rounded-b-3xl print:hidden relative overflow-hidden">
+      <header className="bg-slate-900 text-white pt-10 pb-6 px-4 md:px-6 shadow-lg rounded-b-3xl print:hidden relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-teal-500/10 pointer-events-none"></div>
-        <div className="max-w-3xl mx-auto flex items-center justify-between relative z-10">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-              Leitner Tracker
-              {/* תגית גרסה שנוכל לוודא שהקוד התעדכן */}
-              <span className="text-xs bg-teal-600 px-2 py-0.5 rounded-full font-medium tracking-wider">v2.1</span>
-            </h1>
-            <p className="text-teal-400 text-sm mt-1 font-medium">לייטנר - דיווח חודשי</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {isInstallable && (
-              <button 
-                onClick={handleInstallClick}
-                className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-xl backdrop-blur-sm transition-colors flex items-center gap-2 text-sm font-bold border border-white/10"
-                title="התקן אפליקציה"
-              >
-                <Smartphone size={18} />
-                <span className="hidden sm:inline">התקן</span>
-              </button>
-            )}
-            <div className="bg-teal-500/20 text-teal-300 p-3 rounded-2xl backdrop-blur-sm">
-              <FileSignature size={28} />
+        <div className="max-w-3xl mx-auto relative z-10">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Leitner Tracker</h1>
+              <p className="text-teal-400 text-sm mt-0.5 font-medium">דיווח שעות מתקדם</p>
             </div>
+            <div className="flex items-center gap-3">
+              {isInstallable && (
+                <button onClick={handleInstallClick} className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-xl backdrop-blur-sm transition-colors flex items-center gap-2 text-sm font-bold border border-white/10">
+                  <Smartphone size={18} />
+                  <span className="hidden sm:inline">התקן</span>
+                </button>
+              )}
+              <div className="bg-teal-500/20 text-teal-300 p-2.5 rounded-2xl backdrop-blur-sm">
+                <FileSignature size={24} />
+              </div>
+            </div>
+          </div>
+          
+          {/* בורר חודשים */}
+          <div className="bg-slate-800/80 p-1.5 rounded-xl border border-slate-700/50 inline-flex items-center gap-2">
+            <History size={18} className="text-slate-400 mr-2" />
+            <select 
+              value={viewMonth}
+              onChange={(e) => setViewMonth(e.target.value)}
+              className="bg-transparent text-white font-bold text-sm outline-none cursor-pointer appearance-none pr-2 pl-6"
+            >
+              {availableMonths.map(month => (
+                <option key={month} value={month} className="bg-slate-800 text-white">
+                  חודש {month} {month === getCurrentMonthString() ? '(נוכחי)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </header>
@@ -369,7 +390,7 @@ export default function App() {
         <section className="bg-white rounded-3xl shadow-md border border-slate-100 p-5 print:hidden">
           <h2 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
             <div className="bg-teal-100 text-teal-600 p-1.5 rounded-lg"><Plus size={18} /></div>
-            הזנת שיעור חדש
+            הזנת שיעור - חודש {viewMonth}
           </h2>
           
           <div className="space-y-4 mb-5">
@@ -431,47 +452,49 @@ export default function App() {
 
         {/* Print Header */}
         <div className="hidden print:block text-center mb-10 border-b-2 border-slate-800 pb-6">
-          <h1 className="text-3xl font-bold text-slate-900">דוח שעות חודשי - Leitner Tracker</h1>
+          <h1 className="text-3xl font-bold text-slate-900">דוח שעות - חודש {viewMonth}</h1>
           <div className="flex justify-center gap-8 mt-4 text-slate-700 text-lg">
             <p><strong>מגיש:</strong> נתנאל</p>
             <p><strong>טלפון:</strong> 053-5303607</p>
-            <p><strong>חודש דיווח:</strong> {new Date().getMonth() + 1}/{new Date().getFullYear()}</p>
           </div>
         </div>
 
         {/* Lessons Table */}
-        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-none print:shadow-none">
+        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-none print:shadow-none relative min-h-[200px]">
+          {isLoading && (
+            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center print:hidden">
+              <div className="w-10 h-10 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin mb-3"></div>
+              <p className="font-medium text-slate-600">מושך נתונים לחודש זה...</p>
+            </div>
+          )}
+
           <div className="p-4 sm:p-5 bg-slate-800 text-white flex justify-between items-center print:bg-transparent print:text-slate-900 print:p-0 print:mb-4">
             <div className="flex items-center gap-3">
               <h2 className="font-bold text-lg">טבלת שיעורים</h2>
-              {lessons.length > 0 && (
+              {!isLoading && lessons.length > 0 && (
                 <span className="bg-slate-700 print:bg-slate-100 text-teal-300 print:text-slate-800 py-1 px-3 rounded-full text-sm font-bold">
                   {lessons.length} שיעורים
                 </span>
               )}
             </div>
-            {lessons.length > 1 && (
+            {lessons.length > 1 && !isLoading && (
               <button 
                 onClick={() => setIsTableExpanded(!isTableExpanded)}
                 className="flex items-center gap-1 text-sm font-medium bg-slate-700/50 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors print:hidden"
               >
-                {isTableExpanded ? (
-                  <><ChevronUp size={16} /> הסתר ישנים</>
-                ) : (
-                  <><ChevronDown size={16} /> הצג הכל</>
-                )}
+                {isTableExpanded ? <><ChevronUp size={16} /> הסתר ישנים</> : <><ChevronDown size={16} /> הצג הכל</>}
               </button>
             )}
           </div>
           
-          {lessons.length === 0 ? (
+          {!isLoading && lessons.length === 0 ? (
             <div className="p-10 text-center text-slate-400 print:hidden flex flex-col items-center gap-3">
               <div className="bg-slate-50 p-4 rounded-full">
                 <FileSignature size={32} className="text-slate-300" />
               </div>
-              <p>הטבלה ריקה. הוסף שיעור ראשון.</p>
+              <p>אין שיעורים מדווחים בחודש {viewMonth}.</p>
             </div>
-          ) : (
+          ) : !isLoading && (
             <div className="overflow-x-auto">
               {!isTableExpanded && lessons.length > 1 && (
                 <div className="bg-teal-50 text-teal-700 p-2 text-center text-sm font-medium print:hidden">
@@ -503,10 +526,7 @@ export default function App() {
                           <img src={lesson.signature} alt="חתימה" className="h-12 md:h-14 w-full max-w-[120px] object-contain mx-auto" />
                         </td>
                         <td className="p-4 print:hidden text-center">
-                          <button 
-                            onClick={() => setLessonToDelete(lesson.id)}
-                            className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors inline-flex"
-                          >
+                          <button onClick={() => setLessonToDelete(lesson.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors inline-flex">
                             <Trash2 size={20} />
                           </button>
                         </td>
@@ -516,7 +536,7 @@ export default function App() {
                 </tbody>
                 <tfoot className="bg-slate-50 font-bold text-slate-800 border-t-2 border-slate-200 print:border-slate-800">
                   <tr>
-                    <td colSpan="2" className="p-4 text-left border-l print:border-slate-300">סה"כ שעות:</td>
+                    <td colSpan="2" className="p-4 text-left border-l print:border-slate-300">סה"כ שעות בחודש {viewMonth}:</td>
                     <td className="p-4 border-l print:border-slate-300 text-teal-700 print:text-slate-900">
                       {lessons.reduce((sum, lesson) => sum + parseFloat(lesson.duration), 0)} ש'
                     </td>
@@ -543,7 +563,7 @@ export default function App() {
               </p>
               
               <div className="mt-4 flex items-center gap-3 print:hidden">
-                <label className="text-sm font-semibold text-slate-600">תאריך דיווח (סוף חודש):</label>
+                <label className="text-sm font-semibold text-slate-600">תאריך דיווח:</label>
                 <input 
                   type="date" 
                   value={declarationDate}
@@ -559,10 +579,7 @@ export default function App() {
             
             <div className="mt-5 flex items-center gap-4 print:hidden">
               {!teacherSignature ? (
-                <button 
-                  onClick={openTeacherSignature}
-                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-medium transition-colors flex items-center gap-2 shadow-md shadow-slate-800/20"
-                >
+                <button onClick={openTeacherSignature} className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-medium transition-colors flex items-center gap-2 shadow-md shadow-slate-800/20">
                   <PenTool size={16} /> הוסף את החתימה שלך
                 </button>
               ) : (
@@ -576,22 +593,17 @@ export default function App() {
             
             <div className="hidden print:block mt-10 text-center w-64">
                 <p className="text-lg font-bold text-slate-800 mb-4 border-t-2 border-slate-300 pt-2">חתימת המורה (נתנאל):</p>
-                {teacherSignature ? (
-                  <img src={teacherSignature} alt="חתימת מורה" className="h-20 mx-auto" />
-                ) : (
-                  <div className="h-20 w-full"></div>
-                )}
+                {teacherSignature ? <img src={teacherSignature} alt="חתימת מורה" className="h-20 mx-auto" /> : <div className="h-20 w-full"></div>}
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 print:hidden pt-4">
-             <button 
-              onClick={saveToGoogleSheets}
-              disabled={lessons.length === 0 || isSaving}
-              className="flex-1 py-4 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 text-lg"
-            >
-              <Save size={22} /> {isSaving ? "שומר..." : "סנכרן נתונים לאקסל"}
-            </button>
+            {isSaving && (
+              <div className="flex-1 py-4 px-4 bg-teal-50 text-teal-700 rounded-2xl font-bold flex items-center justify-center gap-2 text-lg border border-teal-200">
+                <div className="w-5 h-5 border-2 border-teal-300 border-t-teal-700 rounded-full animate-spin"></div>
+                שומר רקע...
+              </div>
+            )}
             <button 
               onClick={sendEmail}
               disabled={lessons.length === 0}
@@ -611,19 +623,14 @@ export default function App() {
 
       </main>
 
-      {/* Signature Modal */}
       {isSigning && (
         <SignaturePad 
           title={signingType === 'student' ? `חתימת תלמיד/ה: ${currentName}` : "חתימה אישית (נתנאל)"}
           onSave={handleSaveSignature} 
-          onCancel={() => {
-            setIsSigning(false);
-            setSigningType(null);
-          }} 
+          onCancel={() => { setIsSigning(false); setSigningType(null); }} 
         />
       )}
 
-      {/* Delete Confirmation Modal */}
       {lessonToDelete && (
         <div className="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden" dir="rtl">
           <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center">
@@ -633,12 +640,8 @@ export default function App() {
             <h3 className="text-lg font-bold text-slate-800 mb-2">מחיקת שיעור</h3>
             <p className="text-slate-600 mb-6">האם אתה בטוח שברצונך למחוק שיעור זה? פעולה זו אינה הפיכה.</p>
             <div className="flex gap-3">
-              <button onClick={() => setLessonToDelete(null)} className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors">
-                ביטול
-              </button>
-              <button onClick={confirmDelete} className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition-colors">
-                מחק שיעור
-              </button>
+              <button onClick={() => setLessonToDelete(null)} className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors">ביטול</button>
+              <button onClick={confirmDelete} className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition-colors">מחק שיעור</button>
             </div>
           </div>
         </div>
