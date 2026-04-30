@@ -10,13 +10,10 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
   const resizeCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
     const parent = canvas.parentElement;
     const rect = parent.getBoundingClientRect();
-    
     canvas.width = rect.width;
     canvas.height = rect.height;
-
     const context = canvas.getContext("2d");
     context.lineCap = "round";
     context.lineJoin = "round"; 
@@ -67,7 +64,6 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
     const { x, y } = getCoordinates(event);
     const points = pointsRef.current;
     points.push({ x, y });
-
     const ctx = contextRef.current;
     if (points.length >= 3) {
       const lastTwo = points.slice(-2);
@@ -84,12 +80,6 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
       ctx.lineTo(x, y);
       ctx.stroke();
     }
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    const context = canvas.getContext("2d");
-    context.clearRect(0, 0, canvas.width, canvas.height);
   };
 
   const saveSignature = () => {
@@ -110,16 +100,14 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
             <X size={20} />
           </button>
         </div>
-        
         <div className="p-4 bg-slate-50 flex-grow flex flex-col">
           <p className="text-sm text-slate-500 mb-3 text-center">אנא חתום בתוך המסגרת:</p>
           <div className="relative flex-grow bg-white border-2 border-dashed border-teal-300 rounded-2xl overflow-hidden touch-none shadow-inner">
             <canvas ref={canvasRef} onMouseDown={startDrawing} onMouseUp={finishDrawing} onMouseOut={finishDrawing} onMouseMove={draw} onTouchStart={startDrawing} onTouchEnd={finishDrawing} onTouchCancel={finishDrawing} onTouchMove={draw} className="absolute inset-0 w-full h-full bg-transparent cursor-crosshair touch-none" />
           </div>
         </div>
-
         <div className="p-4 flex gap-3 bg-white border-t border-slate-100">
-          <button onClick={clearCanvas} className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors">נקה מסך</button>
+          <button onClick={() => { const canvas = canvasRef.current; canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height); }} className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors">נקה מסך</button>
           <button onClick={saveSignature} className="flex-1 py-3 px-4 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 transition-colors flex items-center justify-center gap-2 shadow-md shadow-teal-600/20"><Check size={18} /> שמור חתימה</button>
         </div>
       </div>
@@ -137,7 +125,6 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
-  // ניהול חודשים
   const getCurrentMonthString = () => {
     const d = new Date();
     return `${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
@@ -145,59 +132,68 @@ export default function App() {
   
   const [viewMonth, setViewMonth] = useState(getCurrentMonthString());
   const [availableMonths, setAvailableMonths] = useState([getCurrentMonthString()]);
-
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
-  
   const [isTableExpanded, setIsTableExpanded] = useState(false);
-
   const [currentName, setCurrentName] = useState('');
   const [currentDuration, setCurrentDuration] = useState('1');
   
-  // קביעת תאריך ברירת מחדל לאינפוט לפי החודש שצופים בו עכשיו
   const getDefaultDateForViewMonth = () => {
     const [m, y] = viewMonth.split('-');
-    const currentRealMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-    // אם מסתכלים על החודש הנוכחי באמת, נציג את היום. אם על חודש ישן, נציג את ה-1 לחודש ההוא.
-    if (m === currentRealMonth) return new Date().toISOString().split('T')[0];
+    const now = new Date();
+    if (parseInt(m) === (now.getMonth() + 1) && parseInt(y) === now.getFullYear()) {
+      return now.toISOString().split('T')[0];
+    }
     return `${y}-${m}-01`;
   };
+
   const [currentDate, setCurrentDate] = useState(getDefaultDateForViewMonth());
-  
   const [teacherSignature, setTeacherSignature] = useState(null);
 
-  // תאריך הצהרה (סוף החודש שבו צופים)
   const getEndOfViewMonth = () => {
     const [m, y] = viewMonth.split('-');
     return new Date(y, parseInt(m), 0).toISOString().split('T')[0];
   };
   const [declarationDate, setDeclarationDate] = useState(getEndOfViewMonth());
 
-  // עדכון התאריכים אם המשתמש מחליף חודש בתצוגה
-  useEffect(() => {
-    setCurrentDate(getDefaultDateForViewMonth());
-    setDeclarationDate(getEndOfViewMonth());
-  }, [viewMonth]);
-
-  const durations = ['1', '1.25', '1.5', '1.75', '2', '2.25', '2.5', '3'];
-  
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbynmOheXpJBbRNhd5p7plzWCfv6fzOTupcVBsKz6U353F3fg2YeLsse-eRbEbu_R9HQ/exec';
 
-  // משיכת נתונים לחודש הספציפי
+  const formatDisplayDate = (dateStr) => {
+    if (!dateStr) return "";
+    if (dateStr.includes('/')) return dateStr;
+    const parts = dateStr.split('T')[0].split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
+
+  const syncWithExcel = async (dataToSync) => {
+    setIsSaving(true);
+    try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ month: viewMonth, lessons: dataToSync })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') console.error("Sync failed");
+    } catch (error) { 
+        console.error("Sync error:", error); 
+    } finally { 
+        setIsSaving(false); 
+    }
+  };
+
   const fetchLessons = async (monthToFetch) => {
     setIsLoading(true);
     try {
-      // שליחת פרמטר החודש לשרת
       const response = await fetch(`${APPS_SCRIPT_URL}?month=${monthToFetch}`);
       const result = await response.json();
       if (result.status === 'success') {
         setLessons(result.lessons || []);
-        
-        // עדכון רשימת החודשים הזמינים (כדי להציג ב-dropdown)
-        if (result.availableMonths && result.availableMonths.length > 0) {
-          // נוודא שהחודש הנוכחי תמיד ברשימה למקרה שהוא עדיין לא נוצר באקסל
+        if (result.availableMonths) {
           const allMonths = Array.from(new Set([getCurrentMonthString(), ...result.availableMonths]));
-          // מיון מהחדש לישן
           allMonths.sort((a, b) => {
             const [m1, y1] = a.split('-');
             const [m2, y2] = b.split('-');
@@ -207,30 +203,24 @@ export default function App() {
         }
       }
     } catch (error) {
-      console.error("Failed to fetch lessons:", error);
+      console.error("Fetch error:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // קריאה ראשונית ובכל פעם שבוחרים חודש אחר
   useEffect(() => {
-    fetchLessons(viewMonth);
+    setCurrentDate(getDefaultDateForViewMonth());
+    setDeclarationDate(getEndOfViewMonth());
   }, [viewMonth]);
 
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); setIsInstallable(true); };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  }, []);
+  useEffect(() => { fetchLessons(viewMonth); }, [viewMonth]);
 
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') setIsInstallable(false);
-    setDeferredPrompt(null);
-  };
+  useEffect(() => {
+    const handleInstall = (e) => { e.preventDefault(); setDeferredPrompt(e); setIsInstallable(true); };
+    window.addEventListener('beforeinstallprompt', handleInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleInstall);
+  }, []);
 
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
@@ -239,9 +229,7 @@ export default function App() {
       script.src = 'https://cdn.tailwindcss.com';
       script.onload = () => setIsTailwindLoaded(true);
       document.head.appendChild(script);
-    } else {
-      setIsTailwindLoaded(true);
-    }
+    } else { setIsTailwindLoaded(true); }
   }, []);
 
   const openStudentSignature = () => {
@@ -259,29 +247,13 @@ export default function App() {
     setIsSigning(true);
   };
 
-  const syncWithExcel = async (dataToSync) => {
-    setIsSaving(true);
-    try {
-        const response = await fetch(APPS_SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            // שולחים לשרת תחת איזה חודש לשמור את המידע
-            body: JSON.stringify({ month: viewMonth, lessons: dataToSync })
-        });
-        const result = await response.json();
-        if (result.status !== 'success') {
-            console.error("Error from Excel:", result.message);
-            alert("❌ שגיאה בסנכרון מול האקסל.");
-        }
-    } catch (error) {
-        console.error("Sync error:", error);
-    } finally {
-        setIsSaving(false);
-    }
-  };
-
   const handleSaveSignature = async (signatureData) => {
-    if (signingType === 'student') {
+    const type = signingType;
+    // סגירה מיידית למניעת כפילויות
+    setIsSigning(false);
+    setSigningType(null);
+
+    if (type === 'student') {
       const newLesson = {
         id: Date.now(),
         name: currentName,
@@ -289,44 +261,31 @@ export default function App() {
         date: currentDate,
         signature: signatureData
       };
-      const updatedLessons = [...lessons, newLesson];
-      setLessons(updatedLessons);
-      setCurrentName(''); 
+      const updated = [...lessons, newLesson];
+      setLessons(updated);
+      setCurrentName('');
       setIsTableExpanded(false);
-      await syncWithExcel(updatedLessons);
-    } else if (signingType === 'teacher') {
+      await syncWithExcel(updated);
+    } else if (type === 'teacher') {
       setTeacherSignature(signatureData);
     }
-    setIsSigning(false);
-    setSigningType(null);
   };
 
   const confirmDelete = async () => {
-    const updatedLessons = lessons.filter(l => l.id !== lessonToDelete);
-    setLessons(updatedLessons);
+    const updated = lessons.filter(l => l.id !== lessonToDelete);
+    setLessons(updated);
     setLessonToDelete(null);
-    await syncWithExcel(updatedLessons);
+    await syncWithExcel(updated);
   };
 
   const sendEmail = () => {
-    const subject = `דיווח שעות חודשי - נתנאל (חודש ${viewMonth})`;
+    const subject = `דיווח שעות - נתנאל - חודש ${viewMonth}`;
     let body = `שלום רב,\nלהלן דיווח השעות שלי לחודש ${viewMonth}:\n\n`;
-    
-    lessons.forEach((lesson, index) => {
-      const [year, month, day] = lesson.date.split('-');
-      body += `${index + 1}. תלמיד/ה: ${lesson.name} | משך: ${lesson.duration} שעות | תאריך: ${day}/${month}/${year}\n`;
+    lessons.forEach((l, i) => {
+      body += `${i + 1}. תלמיד/ה: ${l.name} | משך: ${l.duration} ש' | תאריך: ${formatDisplayDate(l.date)}\n`;
     });
-
-    body += `\nסה"כ שיעורים: ${lessons.length}\n`;
-    const totalHours = lessons.reduce((sum, lesson) => sum + parseFloat(lesson.duration), 0);
-    body += `סה"כ שעות: ${totalHours}\n\n`;
-
-    body += `אני מצהיר שכל הפרטים הכתובים בדף זה הינם נכונים ומאשר אותם.\n`;
-    const [decYear, decMonth, decDay] = declarationDate.split('-');
-    body += `תאריך דיווח: ${decDay}/${decMonth}/${decYear}\n\n`;
-    
-    body += `בברכה,\nנתנאל\nטלפון: 053-5303607\nמייל: 12natanel@gmail.com`;
-
+    body += `\nסה"כ שעות: ${lessons.reduce((s, l) => s + parseFloat(l.duration), 0)}\n\n`;
+    body += `בברכה,\nנתנאל\n053-5303607`;
     window.open(`mailto:Office@leittner.co.il?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
   };
 
@@ -335,330 +294,134 @@ export default function App() {
     setTimeout(() => { window.print(); }, 100);
   };
 
-  if (!isTailwindLoaded) {
-    return <div dir="rtl" style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif' }}>טוען עיצוב...</div>;
-  }
+  const durations = ['1', '1.25', '1.5', '1.75', '2', '2.25', '2.5', '3'];
 
-  const displayedLessons = isTableExpanded ? lessons : lessons.slice(-1);
+  if (!isTailwindLoaded) return <div className="p-10 text-center font-sans">טוען...</div>;
+  if (isLoading) return (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4" dir="rtl">
+      <div className="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin mb-4"></div>
+      <h2 className="text-lg font-bold text-slate-700">מושך נתונים מחודש {viewMonth}...</h2>
+    </div>
+  );
+
+  const displayed = isTableExpanded ? lessons : (lessons.length > 0 ? [lessons[lessons.length - 1]] : []);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans print:bg-white pb-20" dir="rtl">
-      
-      {/* Header */}
-      <header className="bg-slate-900 text-white pt-10 pb-6 px-4 md:px-6 shadow-lg rounded-b-3xl print:hidden relative overflow-hidden">
+      <header className="bg-slate-900 text-white pt-10 pb-6 px-4 shadow-lg rounded-b-3xl print:hidden relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-teal-500/10 pointer-events-none"></div>
-        <div className="max-w-3xl mx-auto relative z-10">
-          <div className="flex items-center justify-between mb-4">
+        <div className="max-w-3xl mx-auto relative z-10 flex flex-col gap-4">
+          <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Leitner Tracker</h1>
-              <p className="text-teal-400 text-sm mt-0.5 font-medium">דיווח שעות מתקדם</p>
+              <h1 className="text-xl font-bold">Leitner Tracker</h1>
+              <p className="text-teal-400 text-xs font-medium">ניהול שעות חודשי</p>
             </div>
-            <div className="flex items-center gap-3">
-              {isInstallable && (
-                <button onClick={handleInstallClick} className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-xl backdrop-blur-sm transition-colors flex items-center gap-2 text-sm font-bold border border-white/10">
-                  <Smartphone size={18} />
-                  <span className="hidden sm:inline">התקן</span>
-                </button>
-              )}
-              <div className="bg-teal-500/20 text-teal-300 p-2.5 rounded-2xl backdrop-blur-sm">
-                <FileSignature size={24} />
-              </div>
-            </div>
+            <div className="bg-teal-500/20 p-2 rounded-xl"><FileSignature size={24} className="text-teal-300" /></div>
           </div>
-          
-          {/* בורר חודשים */}
-          <div className="bg-slate-800/80 p-1.5 rounded-xl border border-slate-700/50 inline-flex items-center gap-2">
-            <History size={18} className="text-slate-400 mr-2" />
-            <select 
-              value={viewMonth}
-              onChange={(e) => setViewMonth(e.target.value)}
-              className="bg-transparent text-white font-bold text-sm outline-none cursor-pointer appearance-none pr-2 pl-6"
-            >
-              {availableMonths.map(month => (
-                <option key={month} value={month} className="bg-slate-800 text-white">
-                  חודש {month} {month === getCurrentMonthString() ? '(נוכחי)' : ''}
-                </option>
-              ))}
+          <div className="bg-slate-800/80 p-1.5 rounded-xl border border-slate-700/50 inline-flex items-center gap-2 self-start">
+            <History size={16} className="text-slate-400 mr-2" />
+            <select value={viewMonth} onChange={(e) => setViewMonth(e.target.value)} className="bg-transparent text-white font-bold text-xs outline-none cursor-pointer appearance-none pl-4">
+              {availableMonths.map(m => <option key={m} value={m} className="bg-slate-800 text-white">חודש {m}</option>)}
             </select>
           </div>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto p-4 md:p-6 space-y-6 -mt-4 relative z-20">
-        
-        {/* Form Section */}
+      <main className="max-w-3xl mx-auto p-4 space-y-6 -mt-4 relative z-20">
         <section className="bg-white rounded-3xl shadow-md border border-slate-100 p-5 print:hidden">
-          <h2 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
-            <div className="bg-teal-100 text-teal-600 p-1.5 rounded-lg"><Plus size={18} /></div>
-            הזנת שיעור - חודש {viewMonth}
+          <h2 className="text-md font-bold text-slate-800 mb-5 flex items-center gap-2">
+            <div className="bg-teal-100 text-teal-600 p-1 rounded-lg"><Plus size={16} /></div> הזנה לחודש {viewMonth}
           </h2>
-          
           <div className="space-y-4 mb-5">
             <div>
-              <label className="text-sm font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
-                <User size={16} className="text-slate-400" /> שם תלמיד/ה
-              </label>
-              <input 
-                type="text" 
-                value={currentName}
-                onChange={(e) => setCurrentName(e.target.value)}
-                placeholder="הקלד שם תלמיד..."
-                className="w-full p-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition outline-none text-base"
-              />
+              <label className="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-1"><User size={14} /> שם תלמיד/ה</label>
+              <input type="text" value={currentName} onChange={(e) => setCurrentName(e.target.value)} placeholder="הקלד שם..." className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none" />
             </div>
-            
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
-                  <Clock size={16} className="text-slate-400" /> משך 
-                </label>
-                <div className="relative">
-                  <select 
-                    value={currentDuration}
-                    onChange={(e) => setCurrentDuration(e.target.value)}
-                    className="w-full p-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition outline-none appearance-none font-medium text-base"
-                  >
-                    {durations.map(d => <option key={d} value={d}>{d} שעות</option>)}
-                  </select>
-                </div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-1"><Clock size={14} /> משך</label>
+                <select value={currentDuration} onChange={(e) => setCurrentDuration(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none appearance-none">
+                  {durations.map(d => <option key={d} value={d}>{d} שעות</option>)}
+                </select>
               </div>
               <div>
-                <label className="text-sm font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
-                  <Calendar size={16} className="text-slate-400" /> תאריך
-                </label>
-                <input 
-                  type="date" 
-                  value={currentDate}
-                  onChange={(e) => setCurrentDate(e.target.value)}
-                  className="w-full p-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition outline-none font-medium text-base"
-                />
+                <label className="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-1"><Calendar size={14} /> תאריך</label>
+                <input type="date" value={currentDate} onChange={(e) => setCurrentDate(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none" />
               </div>
             </div>
           </div>
-          
-          {errorMsg && (
-            <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm font-medium border border-red-100 flex items-center justify-center">
-              {errorMsg}
-            </div>
-          )}
-          
-          <button 
-            onClick={openStudentSignature}
-            className="w-full py-4 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-teal-600/30 flex items-center justify-center gap-2 text-lg active:scale-[0.98]"
-          >
-            <PenTool size={22} /> החתם תלמיד ושמור
-          </button>
+          {errorMsg && <div className="mb-4 text-red-500 text-xs text-center">{errorMsg}</div>}
+          <button onClick={openStudentSignature} className="w-full py-3.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"><PenTool size={20} /> החתם ושמור</button>
         </section>
 
-        {/* Print Header */}
-        <div className="hidden print:block text-center mb-10 border-b-2 border-slate-800 pb-6">
-          <h1 className="text-3xl font-bold text-slate-900">דוח שעות - חודש {viewMonth}</h1>
-          <div className="flex justify-center gap-8 mt-4 text-slate-700 text-lg">
-            <p><strong>מגיש:</strong> נתנאל</p>
-            <p><strong>טלפון:</strong> 053-5303607</p>
+        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-none print:shadow-none">
+          <div className="p-4 bg-slate-800 text-white flex justify-between items-center print:bg-transparent print:text-slate-900 print:mb-4">
+            <h2 className="font-bold">טבלת שיעורים</h2>
+            {lessons.length > 1 && <button onClick={() => setIsTableExpanded(!isTableExpanded)} className="text-xs bg-slate-700 px-3 py-1.5 rounded-lg print:hidden">{isTableExpanded ? "כווץ" : "הצג הכל"}</button>}
           </div>
-        </div>
-
-        {/* Lessons Table */}
-        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-none print:shadow-none relative min-h-[200px]">
-          {isLoading && (
-            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center print:hidden">
-              <div className="w-10 h-10 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin mb-3"></div>
-              <p className="font-medium text-slate-600">מושך נתונים לחודש זה...</p>
-            </div>
-          )}
-
-          <div className="p-4 sm:p-5 bg-slate-800 text-white flex justify-between items-center print:bg-transparent print:text-slate-900 print:p-0 print:mb-4">
-            <div className="flex items-center gap-3">
-              <h2 className="font-bold text-lg">טבלת שיעורים</h2>
-              {!isLoading && lessons.length > 0 && (
-                <span className="bg-slate-700 print:bg-slate-100 text-teal-300 print:text-slate-800 py-1 px-3 rounded-full text-sm font-bold">
-                  {lessons.length} שיעורים
-                </span>
-              )}
-            </div>
-            {lessons.length > 1 && !isLoading && (
-              <button 
-                onClick={() => setIsTableExpanded(!isTableExpanded)}
-                className="flex items-center gap-1 text-sm font-medium bg-slate-700/50 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors print:hidden"
-              >
-                {isTableExpanded ? <><ChevronUp size={16} /> הסתר ישנים</> : <><ChevronDown size={16} /> הצג הכל</>}
-              </button>
-            )}
-          </div>
-          
-          {!isLoading && lessons.length === 0 ? (
-            <div className="p-10 text-center text-slate-400 print:hidden flex flex-col items-center gap-3">
-              <div className="bg-slate-50 p-4 rounded-full">
-                <FileSignature size={32} className="text-slate-300" />
-              </div>
-              <p>אין שיעורים מדווחים בחודש {viewMonth}.</p>
-            </div>
-          ) : !isLoading && (
-            <div className="overflow-x-auto">
-              {!isTableExpanded && lessons.length > 1 && (
-                <div className="bg-teal-50 text-teal-700 p-2 text-center text-sm font-medium print:hidden">
-                  מציג רק את השיעור האחרון שהוזן
-                </div>
-              )}
-              <table className="w-full text-right border-collapse">
-                <thead className="bg-slate-50 text-slate-600 text-sm border-b border-slate-200 print:bg-slate-100 print:text-slate-800 print:border-slate-300">
-                  <tr>
-                    <th className="p-4 font-bold border-l print:border-slate-300 w-12 text-center">#</th>
-                    <th className="p-4 font-bold border-l print:border-slate-300">תלמיד/ה</th>
-                    <th className="p-4 font-bold border-l print:border-slate-300 w-24">משך</th>
-                    <th className="p-4 font-bold border-l print:border-slate-300 w-32">תאריך</th>
-                    <th className="p-4 font-bold print:border-slate-300">חתימה</th>
-                    <th className="p-4 font-bold print:hidden w-16 text-center">מחק</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right border-collapse">
+              <thead className="bg-slate-50 text-xs border-b">
+                <tr>
+                  <th className="p-3 border-l w-10 text-center">#</th>
+                  <th className="p-3 border-l">תלמיד/ה</th>
+                  <th className="p-3 border-l w-16">משך</th>
+                  <th className="p-3 border-l w-24">תאריך</th>
+                  <th className="p-3">חתימה</th>
+                  <th className="p-3 print:hidden w-10 text-center"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-sm">
+                {displayed.map((l, i) => (
+                  <tr key={l.id} className="hover:bg-slate-50">
+                    <td className="p-3 text-center border-l text-slate-400">{isTableExpanded ? i + 1 : lessons.length}</td>
+                    <td className="p-3 font-bold border-l">{l.name}</td>
+                    <td className="p-3 border-l">{l.duration} ש'</td>
+                    <td className="p-3 border-l whitespace-nowrap">{formatDisplayDate(l.date)}</td>
+                    <td className="p-2"><img src={l.signature} alt="ח" className="h-10 mx-auto object-contain" /></td>
+                    <td className="p-2 text-center print:hidden"><button onClick={() => setLessonToDelete(l.id)} className="text-red-300 hover:text-red-500"><Trash2 size={16} /></button></td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 print:divide-slate-300">
-                  {displayedLessons.map((lesson) => {
-                    const originalIndex = lessons.findIndex(l => l.id === lesson.id);
-                    const [year, month, day] = lesson.date.split('-');
-                    return (
-                      <tr key={lesson.id} className="hover:bg-teal-50/50 transition-colors">
-                        <td className="p-4 text-slate-500 text-center font-medium border-l print:border-slate-300">{originalIndex + 1}</td>
-                        <td className="p-4 font-bold text-slate-800 border-l print:border-slate-300">{lesson.name}</td>
-                        <td className="p-4 text-slate-600 font-medium border-l print:border-slate-300">{lesson.duration} ש'</td>
-                        <td className="p-4 text-slate-600 font-medium border-l print:border-slate-300">{`${day}/${month}/${year.slice(2)}`}</td>
-                        <td className="p-3 border-l print:border-slate-300 align-middle">
-                          <img src={lesson.signature} alt="חתימה" className="h-12 md:h-14 w-full max-w-[120px] object-contain mx-auto" />
-                        </td>
-                        <td className="p-4 print:hidden text-center">
-                          <button onClick={() => setLessonToDelete(lesson.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors inline-flex">
-                            <Trash2 size={20} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-slate-50 font-bold text-slate-800 border-t-2 border-slate-200 print:border-slate-800">
-                  <tr>
-                    <td colSpan="2" className="p-4 text-left border-l print:border-slate-300">סה"כ שעות בחודש {viewMonth}:</td>
-                    <td className="p-4 border-l print:border-slate-300 text-teal-700 print:text-slate-900">
-                      {lessons.reduce((sum, lesson) => sum + parseFloat(lesson.duration), 0)} ש'
-                    </td>
-                    <td colSpan="3" className="p-4"></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </section>
-
-        {/* Declaration and Actions */}
-        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 print:border-none print:shadow-none print:mt-10">
-          <div className="mb-6">
-            <h3 className="font-bold text-slate-800 mb-3 text-lg">הצהרת נכונות נתונים</h3>
-            
-            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 print:border-none print:p-0 print:bg-transparent">
-              <p className="text-slate-700 text-sm leading-relaxed print:text-base">
-                אני מצהיר/ה שכל הפרטים הכתובים בדוח זה הינם נכונים ומאשר/ת אותם.
-                <br/><br/>
-                <strong>שם:</strong> נתנאל &nbsp;|&nbsp;
-                <strong>טלפון:</strong> 053-5303607 &nbsp;|&nbsp;
-                <strong>מייל:</strong> 12natanel@gmail.com
-              </p>
-              
-              <div className="mt-4 flex items-center gap-3 print:hidden">
-                <label className="text-sm font-semibold text-slate-600">תאריך דיווח:</label>
-                <input 
-                  type="date" 
-                  value={declarationDate}
-                  onChange={(e) => setDeclarationDate(e.target.value)}
-                  className="p-2 rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition outline-none font-medium text-sm"
-                />
-              </div>
-              
-              <div className="hidden print:block mt-2">
-                <strong>תאריך דיווח:</strong> {declarationDate.split('-').reverse().join('/')}
-              </div>
-            </div>
-            
-            <div className="mt-5 flex items-center gap-4 print:hidden">
-              {!teacherSignature ? (
-                <button onClick={openTeacherSignature} className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-medium transition-colors flex items-center gap-2 shadow-md shadow-slate-800/20">
-                  <PenTool size={16} /> הוסף את החתימה שלך
-                </button>
-              ) : (
-                <div className="flex items-center gap-4 bg-teal-50 p-3 rounded-2xl border border-teal-100">
-                  <span className="text-sm font-bold text-teal-800">חתימתך:</span>
-                  <img src={teacherSignature} alt="חתימת מורה" className="h-14 object-contain" />
-                  <button onClick={() => setTeacherSignature(null)} className="text-sm px-3 py-1 text-red-500 hover:bg-red-50 rounded-lg font-medium transition-colors">מחק חתימה</button>
-                </div>
-              )}
-            </div>
-            
-            <div className="hidden print:block mt-10 text-center w-64">
-                <p className="text-lg font-bold text-slate-800 mb-4 border-t-2 border-slate-300 pt-2">חתימת המורה (נתנאל):</p>
-                {teacherSignature ? <img src={teacherSignature} alt="חתימת מורה" className="h-20 mx-auto" /> : <div className="h-20 w-full"></div>}
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 print:hidden pt-4">
-            {isSaving && (
-              <div className="flex-1 py-4 px-4 bg-teal-50 text-teal-700 rounded-2xl font-bold flex items-center justify-center gap-2 text-lg border border-teal-200">
-                <div className="w-5 h-5 border-2 border-teal-300 border-t-teal-700 rounded-full animate-spin"></div>
-                שומר רקע...
-              </div>
-            )}
-            <button 
-              onClick={sendEmail}
-              disabled={lessons.length === 0}
-              className="flex-1 py-4 px-4 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 text-lg"
-            >
-              <Mail size={22} /> פתח טיוטת מייל
-            </button>
-            <button 
-              onClick={printReport}
-              disabled={lessons.length === 0}
-              className="flex-1 py-4 px-4 bg-white border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:border-slate-100 disabled:text-slate-300 disabled:cursor-not-allowed text-slate-700 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 text-lg"
-            >
-              <Printer size={22} /> הדפס / PDF
-            </button>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 font-bold text-sm">
+                <tr>
+                  <td colSpan="2" className="p-3 text-left">סה"כ:</td>
+                  <td className="p-3 text-teal-700">{lessons.reduce((s, l) => s + parseFloat(l.duration), 0)} ש'</td>
+                  <td colSpan="3"></td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </section>
 
+        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 print:mt-10">
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-2xl print:p-0 print:bg-transparent">
+              אני מצהיר שכל הפרטים נכונים ומאשר אותם.<br/>
+              <strong>נתנאל</strong> | 053-5303607
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 print:hidden">
+              <button onClick={sendEmail} disabled={lessons.length === 0} className="flex-1 py-3.5 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg"><Mail size={18} /> מייל</button>
+              <button onClick={printReport} disabled={lessons.length === 0} className="flex-1 py-3.5 bg-white border-2 border-slate-200 rounded-xl font-bold flex items-center justify-center gap-2"><Printer size={18} /> הדפס</button>
+            </div>
+            {isSaving && <div className="text-center text-xs text-teal-600 animate-pulse font-bold">סנכרון רקע...</div>}
+          </div>
+          <div className="hidden print:block mt-10 text-center w-48 border-t pt-2 mx-auto">חתימת המורה</div>
+        </section>
       </main>
 
-      {isSigning && (
-        <SignaturePad 
-          title={signingType === 'student' ? `חתימת תלמיד/ה: ${currentName}` : "חתימה אישית (נתנאל)"}
-          onSave={handleSaveSignature} 
-          onCancel={() => { setIsSigning(false); setSigningType(null); }} 
-        />
-      )}
-
+      {isSigning && <SignaturePad title={signingType === 'student' ? `חתימת ${currentName}` : "חתימה"} onSave={handleSaveSignature} onCancel={() => setIsSigning(false)} />}
       {lessonToDelete && (
-        <div className="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden" dir="rtl">
-          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center">
-            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Trash2 size={32} />
-            </div>
-            <h3 className="text-lg font-bold text-slate-800 mb-2">מחיקת שיעור</h3>
-            <p className="text-slate-600 mb-6">האם אתה בטוח שברצונך למחוק שיעור זה? פעולה זו אינה הפיכה.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setLessonToDelete(null)} className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors">ביטול</button>
-              <button onClick={confirmDelete} className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition-colors">מחק שיעור</button>
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl p-6 text-center shadow-xl w-full max-w-xs">
+            <h3 className="font-bold mb-4">מחיקת שיעור?</h3>
+            <div className="flex gap-2">
+              <button onClick={() => setLessonToDelete(null)} className="flex-1 py-2 bg-slate-100 rounded-lg">ביטול</button>
+              <button onClick={confirmDelete} className="flex-1 py-2 bg-red-500 text-white rounded-lg">מחק</button>
             </div>
           </div>
         </div>
       )}
-      
-      <style dangerouslySetInnerHTML={{__html: `
-        @media print {
-          body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .print\\:hidden { display: none !important; }
-          .print\\:block { display: block !important; }
-          .print\\:bg-white { background-color: white !important; }
-          .print\\:bg-transparent { background-color: transparent !important; }
-          table { page-break-inside: auto; }
-          tr { page-break-inside: avoid; page-break-after: auto; }
-          @page { margin: 1.5cm; }
-        }
-      `}} />
     </div>
   );
 }
