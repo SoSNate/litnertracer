@@ -281,26 +281,22 @@ export default function App() {
     setIsSaving(true);
     
     try {
-        const response = await fetch(APPS_SCRIPT_URL, {
+        // שימוש ב-no-cors פותר את בעיית הדפדפן שחוסם, אבל זה אומר שאנחנו לא נקבל את התשובה מהשרת
+        await fetch(APPS_SCRIPT_URL, {
             method: 'POST',
+            mode: 'no-cors', 
             body: JSON.stringify(lessons),
             headers: {
                 'Content-Type': 'text/plain;charset=utf-8',
-            },
-            redirect: 'follow' // חשוב כדי לאפשר לגוגל לעשות הפניה פנימית
+            }
         });
         
-        const result = await response.json();
+        // בגלל no-cors, אנחנו מניחים שהשמירה הצליחה אם ה-fetch לא זרק שגיאת רשת
+        alert("בקשת השמירה נשלחה! (בדוק באקסל אם הנתונים הופיעו)");
         
-        if (result.status === 'success') {
-            alert("הנתונים נשמרו בהצלחה!");
-        } else {
-            console.error("Error from Apps Script:", result.message);
-            alert("שגיאה בשמירת הנתונים. אנא נסה שוב.");
-        }
     } catch (error) {
-        console.error("Network or parsing error:", error);
-        alert("שגיאת תקשורת. לא ניתן היה להתחבר לשרת. ודא שהאפסקריפט מוגדר נכון.");
+        console.error("Network error:", error);
+        alert("שגיאת תקשורת מול השרת של גוגל.");
     } finally {
         setIsSaving(false);
     }
