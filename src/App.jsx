@@ -281,23 +281,25 @@ export default function App() {
     setIsSaving(true);
     
     try {
-        // שימוש ב-no-cors פותר את בעיית הדפדפן שחוסם
-        await fetch(APPS_SCRIPT_URL, {
+        // שליחה נקייה ללא Headers. זה מונע את חסימות ה-CORS של הדפדפן מול גוגל
+        const response = await fetch(APPS_SCRIPT_URL, {
             method: 'POST',
-            mode: 'no-cors', 
-            redirect: 'follow', // חשוב כדי לעקוב אחרי הפניות פנימיות של גוגל
-            headers: {
-                'Content-Type': 'text/plain', // הפורמט הבטוח ביותר למניעת חסימת דפדפן
-            },
             body: JSON.stringify(lessons)
         });
         
-        // בגלל no-cors, אנחנו מניחים שהשמירה הצליחה אם ה-fetch לא זרק שגיאת רשת
-        alert("בקשת השמירה נשלחה! (בדוק באקסל אם הנתונים הופיעו)");
+        // עכשיו אנחנו באמת מקשיבים לתשובה של האקסל!
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            alert("הנתונים נשמרו באקסל בהצלחה!");
+        } else {
+            console.error("Error from Apps Script:", result.message);
+            alert("הייתה בעיה בשמירה: " + result.message);
+        }
         
     } catch (error) {
         console.error("Network error:", error);
-        alert("שגיאת תקשורת מול השרת של גוגל. ודא שהאפסקריפט מוגדר כ-Anyone.");
+        alert("שגיאת תקשורת מול השרת של גוגל.");
     } finally {
         setIsSaving(false);
     }
