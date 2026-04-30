@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PenTool, Mail, Printer, Trash2, Plus, Check, X, FileSignature, Clock, Calendar, User, Save } from 'lucide-react';
+import { PenTool, Mail, Printer, Trash2, Plus, Check, X, FileSignature, Clock, Calendar, User, Save, Smartphone, ChevronDown, ChevronUp } from 'lucide-react';
 
 const SignaturePad = ({ onSave, onCancel, title }) => {
   const canvasRef = useRef(null);
@@ -111,10 +111,11 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm print:hidden" dir="rtl">
-      <div className="bg-white rounded-3xl w-full max-w-2xl h-[85vh] sm:h-[60vh] max-h-[600px] overflow-hidden shadow-2xl flex flex-col">
-        <div className="bg-slate-800 text-white p-4 sm:p-5 flex justify-between items-center">
-          <h3 className="font-bold text-base sm:text-lg flex items-center gap-2">
+    <div className="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden" dir="rtl">
+      {/* גובה מותאם אישית לחתימה לאורך */}
+      <div className="bg-white rounded-3xl w-full max-w-md h-[450px] overflow-hidden shadow-2xl flex flex-col">
+        <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
+          <h3 className="font-bold text-lg flex items-center gap-2">
             <FileSignature size={20} className="text-teal-400" />
             {title || "חתימה"}
           </h3>
@@ -123,8 +124,8 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
           </button>
         </div>
         
-        <div className="p-3 sm:p-5 bg-slate-50 flex-grow flex flex-col">
-          <p className="text-xs sm:text-sm text-slate-500 mb-2 text-center">סובב את המכשיר לרוחב וחתום בתוך המסגרת:</p>
+        <div className="p-4 bg-slate-50 flex-grow flex flex-col">
+          <p className="text-sm text-slate-500 mb-3 text-center">אנא חתום בתוך המסגרת:</p>
           <div className="relative flex-grow bg-white border-2 border-dashed border-teal-300 rounded-2xl overflow-hidden touch-none shadow-inner">
             <canvas
               ref={canvasRef}
@@ -141,7 +142,7 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
           </div>
         </div>
 
-        <div className="p-3 sm:p-4 flex gap-3 bg-white border-t border-slate-100">
+        <div className="p-4 flex gap-3 bg-white border-t border-slate-100">
           <button 
             onClick={clearCanvas}
             className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
@@ -169,18 +170,56 @@ export default function App() {
   const [isTailwindLoaded, setIsTailwindLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  
+  // Table state
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
+
+  // Form states
   const [currentName, setCurrentName] = useState('');
   const [currentDuration, setCurrentDuration] = useState('1');
   const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [teacherSignature, setTeacherSignature] = useState(null);
 
+  // חישוב היום האחרון של החודש הנוכחי
+  const getLastDayOfMonth = () => {
+    const date = new Date();
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
+  };
+  const [declarationDate, setDeclarationDate] = useState(getLastDayOfMonth());
+
   const durations = ['1', '1.25', '1.5', '1.75', '2', '2.25', '2.5', '3'];
   
-  // *** הכתובת של ה-Apps Script שהגדרת ***
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzlOsVnkaPGLzcXPWCljbedbjhBpwsyX_jrQfKARJQ_d36NkhUzNCLe5xywHVgwr0fz/exec';
 
-  // הזרקת Tailwind CSS בצורה אוטומטית כדי לוודא עיצוב תקין בכל סביבה
+  // PWA - האזנה לאירוע התקנה של הדפדפן
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsInstallable(false);
+    }
+    setDeferredPrompt(null);
+  };
+
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script');
@@ -219,6 +258,8 @@ export default function App() {
       };
       setLessons([...lessons, newLesson]);
       setCurrentName(''); 
+      // סוגר את הטבלה כדי להראות רק את החדש
+      setIsTableExpanded(false);
     } else if (signingType === 'teacher') {
       setTeacherSignature(signatureData);
     }
@@ -243,25 +284,23 @@ export default function App() {
         const response = await fetch(APPS_SCRIPT_URL, {
             method: 'POST',
             body: JSON.stringify(lessons),
-            // Important: Use text/plain to avoid CORS preflight issues with Apps Script
             headers: {
                 'Content-Type': 'text/plain;charset=utf-8',
-            }
+            },
+            redirect: 'follow' // חשוב כדי לאפשר לגוגל לעשות הפניה פנימית
         });
         
         const result = await response.json();
         
         if (result.status === 'success') {
             alert("הנתונים נשמרו בהצלחה!");
-            // Optional: clear lessons after successful save
-            // setLessons([]); 
         } else {
             console.error("Error from Apps Script:", result.message);
             alert("שגיאה בשמירת הנתונים. אנא נסה שוב.");
         }
     } catch (error) {
         console.error("Network or parsing error:", error);
-        alert("שגיאת תקשורת. לא ניתן היה להתחבר לשרת.");
+        alert("שגיאת תקשורת. לא ניתן היה להתחבר לשרת. ודא שהאפסקריפט מוגדר נכון.");
     } finally {
         setIsSaving(false);
     }
@@ -282,19 +321,28 @@ export default function App() {
     body += `סה"כ שעות: ${totalHours}\n\n`;
 
     body += `אני מצהיר שכל הפרטים הכתובים בדף זה הינם נכונים ומאשר אותם.\n`;
+    const [decYear, decMonth, decDay] = declarationDate.split('-');
+    body += `תאריך דיווח: ${decDay}/${decMonth}/${decYear}\n\n`;
+    
     body += `בברכה,\nנתנאל\nטלפון: 053-5303607\nמייל: 12natanel@gmail.com`;
 
     window.open(`mailto:Office@leittner.co.il?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
   };
 
   const printReport = () => {
-    window.print();
+    // מרחיב את הטבלה לפני הדפסה כדי שיראו הכל
+    setIsTableExpanded(true);
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
-  // מסך טעינה קצר עד שהעיצוב יורד מהאינטרנט
   if (!isTailwindLoaded) {
     return <div dir="rtl" style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif' }}>טוען עיצוב...</div>;
   }
+
+  // סינון שיעורים להצגה (אחד אחרון או כולם)
+  const displayedLessons = isTableExpanded ? lessons : lessons.slice(-1);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans print:bg-white pb-20" dir="rtl">
@@ -304,11 +352,23 @@ export default function App() {
         <div className="absolute top-0 left-0 w-full h-full bg-teal-500/10 pointer-events-none"></div>
         <div className="max-w-3xl mx-auto flex items-center justify-between relative z-10">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">מעקב שיעורים</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Leitner Tracker</h1>
             <p className="text-teal-400 text-sm mt-1 font-medium">לייטנר - דיווח חודשי</p>
           </div>
-          <div className="bg-teal-500/20 text-teal-300 p-3 rounded-2xl backdrop-blur-sm">
-            <FileSignature size={28} />
+          <div className="flex items-center gap-3">
+            {isInstallable && (
+              <button 
+                onClick={handleInstallClick}
+                className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-xl backdrop-blur-sm transition-colors flex items-center gap-2 text-sm font-bold border border-white/10"
+                title="התקן אפליקציה"
+              >
+                <Smartphone size={18} />
+                <span className="hidden sm:inline">התקן</span>
+              </button>
+            )}
+            <div className="bg-teal-500/20 text-teal-300 p-3 rounded-2xl backdrop-blur-sm">
+              <FileSignature size={28} />
+            </div>
           </div>
         </div>
       </header>
@@ -381,7 +441,7 @@ export default function App() {
 
         {/* Print Header - Visible only when printing */}
         <div className="hidden print:block text-center mb-10 border-b-2 border-slate-800 pb-6">
-          <h1 className="text-3xl font-bold text-slate-900">דוח שעות חודשי - לייטנר</h1>
+          <h1 className="text-3xl font-bold text-slate-900">דוח שעות חודשי - Leitner Tracker</h1>
           <div className="flex justify-center gap-8 mt-4 text-slate-700 text-lg">
             <p><strong>מגיש:</strong> נתנאל</p>
             <p><strong>טלפון:</strong> 053-5303607</p>
@@ -391,11 +451,28 @@ export default function App() {
 
         {/* Lessons Table */}
         <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-none print:shadow-none">
-          <div className="p-5 bg-slate-800 text-white flex justify-between items-center print:bg-transparent print:text-slate-900 print:p-0 print:mb-4">
-            <h2 className="font-bold text-lg">טבלת שיעורים</h2>
-            <span className="bg-slate-700 print:bg-slate-100 text-teal-300 print:text-slate-800 py-1 px-3 rounded-full text-sm font-bold">
-              {lessons.length} שיעורים
-            </span>
+          <div className="p-4 sm:p-5 bg-slate-800 text-white flex justify-between items-center print:bg-transparent print:text-slate-900 print:p-0 print:mb-4">
+            <div className="flex items-center gap-3">
+              <h2 className="font-bold text-lg">טבלת שיעורים</h2>
+              {lessons.length > 0 && (
+                <span className="bg-slate-700 print:bg-slate-100 text-teal-300 print:text-slate-800 py-1 px-3 rounded-full text-sm font-bold">
+                  {lessons.length} שיעורים
+                </span>
+              )}
+            </div>
+            {/* כפתור כיווץ/הרחבה לטבלה */}
+            {lessons.length > 1 && (
+              <button 
+                onClick={() => setIsTableExpanded(!isTableExpanded)}
+                className="flex items-center gap-1 text-sm font-medium bg-slate-700/50 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors print:hidden"
+              >
+                {isTableExpanded ? (
+                  <><ChevronUp size={16} /> הסתר ישנים</>
+                ) : (
+                  <><ChevronDown size={16} /> הצג הכל</>
+                )}
+              </button>
+            )}
           </div>
           
           {lessons.length === 0 ? (
@@ -407,6 +484,11 @@ export default function App() {
             </div>
           ) : (
             <div className="overflow-x-auto">
+              {!isTableExpanded && lessons.length > 1 && (
+                <div className="bg-teal-50 text-teal-700 p-2 text-center text-sm font-medium print:hidden">
+                  מציג רק את השיעור האחרון שהוזן
+                </div>
+              )}
               <table className="w-full text-right border-collapse">
                 <thead className="bg-slate-50 text-slate-600 text-sm border-b border-slate-200 print:bg-slate-100 print:text-slate-800 print:border-slate-300">
                   <tr>
@@ -419,11 +501,12 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 print:divide-slate-300">
-                  {lessons.map((lesson, idx) => {
+                  {displayedLessons.map((lesson) => {
+                    const originalIndex = lessons.findIndex(l => l.id === lesson.id);
                     const [year, month, day] = lesson.date.split('-');
                     return (
                       <tr key={lesson.id} className="hover:bg-teal-50/50 transition-colors">
-                        <td className="p-4 text-slate-500 text-center font-medium border-l print:border-slate-300">{idx + 1}</td>
+                        <td className="p-4 text-slate-500 text-center font-medium border-l print:border-slate-300">{originalIndex + 1}</td>
                         <td className="p-4 font-bold text-slate-800 border-l print:border-slate-300">{lesson.name}</td>
                         <td className="p-4 text-slate-600 font-medium border-l print:border-slate-300">{lesson.duration} ש'</td>
                         <td className="p-4 text-slate-600 font-medium border-l print:border-slate-300">{`${day}/${month}/${year.slice(2)}`}</td>
@@ -460,13 +543,32 @@ export default function App() {
         <section className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 print:border-none print:shadow-none print:mt-10">
           <div className="mb-6">
             <h3 className="font-bold text-slate-800 mb-3 text-lg">הצהרת נכונות נתונים</h3>
-            <p className="text-slate-700 text-sm bg-slate-50 p-5 rounded-2xl border border-slate-100 leading-relaxed print:border-none print:p-0 print:bg-transparent print:text-base">
-              אני מצהיר/ה שכל הפרטים הכתובים בדוח זה הינם נכונים ומאשר/ת אותם.
-              <br/><br/>
-              <strong>שם:</strong> נתנאל &nbsp;|&nbsp;
-              <strong>טלפון:</strong> 053-5303607 &nbsp;|&nbsp;
-              <strong>מייל:</strong> 12natanel@gmail.com
-            </p>
+            
+            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 print:border-none print:p-0 print:bg-transparent">
+              <p className="text-slate-700 text-sm leading-relaxed print:text-base">
+                אני מצהיר/ה שכל הפרטים הכתובים בדוח זה הינם נכונים ומאשר/ת אותם.
+                <br/><br/>
+                <strong>שם:</strong> נתנאל &nbsp;|&nbsp;
+                <strong>טלפון:</strong> 053-5303607 &nbsp;|&nbsp;
+                <strong>מייל:</strong> 12natanel@gmail.com
+              </p>
+              
+              {/* בחירת תאריך להצהרה */}
+              <div className="mt-4 flex items-center gap-3 print:hidden">
+                <label className="text-sm font-semibold text-slate-600">תאריך דיווח (סוף חודש):</label>
+                <input 
+                  type="date" 
+                  value={declarationDate}
+                  onChange={(e) => setDeclarationDate(e.target.value)}
+                  className="p-2 rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition outline-none font-medium text-sm"
+                />
+              </div>
+              
+              {/* תאריך מודפס (מופיע רק בהדפסה) */}
+              <div className="hidden print:block mt-2">
+                <strong>תאריך דיווח:</strong> {declarationDate.split('-').reverse().join('/')}
+              </div>
+            </div>
             
             <div className="mt-5 flex items-center gap-4 print:hidden">
               {!teacherSignature ? (

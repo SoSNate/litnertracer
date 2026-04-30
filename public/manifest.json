@@ -1,0 +1,33 @@
+{
+  "short_name": "LeitnerTracker",
+  "name": "לייטנר טראקר - דיווח שעות",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#f8fafc"
+}
+
+**2. הוסף אייקון**
+תמצא תמונה מרובעת שאתה אוהב (בפורמט PNG, עדיף בגודל 512x512 פיקסלים), תקרא לה `icon.png` ותגרור אותה לתוך תיקיית ה-`public` בפרויקט שלך.
+
+**3. חיבור הקובץ ב-`index.html`**
+פתח את הקובץ `index.html` (שנמצא בתיקייה הראשית של הפרויקט) והוסף את השורה הבאה בתוך תגיות ה-`<head>`:
+```html
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0f172a" />
+
+ברגע שתדחוף את השינויים האלו ל-GitHub (ביחד עם קובץ ה-`app.jsx` המעודכן שלנו), המערכת תהפוך לאפליקציה מתקנת לכל דבר! 
+
+אגב, אם תרצה שאייצר לך קוד לוגו ב-SVG שאותו תוכל לשמור כ-`icon.png` - רק תגיד.
