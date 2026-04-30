@@ -112,7 +112,6 @@ const SignaturePad = ({ onSave, onCancel, title }) => {
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden" dir="rtl">
-      {/* גובה מותאם אישית לחתימה לאורך */}
       <div className="bg-white rounded-3xl w-full max-w-md h-[450px] overflow-hidden shadow-2xl flex flex-col">
         <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
           <h3 className="font-bold text-lg flex items-center gap-2">
@@ -170,21 +169,17 @@ export default function App() {
   const [isTailwindLoaded, setIsTailwindLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   
-  // Table state
   const [isTableExpanded, setIsTableExpanded] = useState(false);
 
-  // Form states
   const [currentName, setCurrentName] = useState('');
   const [currentDuration, setCurrentDuration] = useState('1');
   const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [teacherSignature, setTeacherSignature] = useState(null);
 
-  // חישוב היום האחרון של החודש הנוכחי
   const getLastDayOfMonth = () => {
     const date = new Date();
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -195,7 +190,6 @@ export default function App() {
   
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-UNfyflm0KJHdAv_oRFg-ds2vzpjAgev_Gqi-6X89rNgMmhUZiDuRxmLvsM85ogZe/exec';
 
-  // PWA - האזנה לאירוע התקנה של הדפדפן
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
@@ -204,19 +198,14 @@ export default function App() {
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setIsInstallable(false);
-    }
+    if (outcome === 'accepted') setIsInstallable(false);
     setDeferredPrompt(null);
   };
 
@@ -258,7 +247,6 @@ export default function App() {
       };
       setLessons([...lessons, newLesson]);
       setCurrentName(''); 
-      // סוגר את הטבלה כדי להראות רק את החדש
       setIsTableExpanded(false);
     } else if (signingType === 'teacher') {
       setTeacherSignature(signatureData);
@@ -281,25 +269,26 @@ export default function App() {
     setIsSaving(true);
     
     try {
-        // שליחה נקייה ללא Headers. זה מונע את חסימות ה-CORS של הדפדפן מול גוגל
+        // שליחה גלויה לחלוטין - ללא עקיפת הרשאות
         const response = await fetch(APPS_SCRIPT_URL, {
             method: 'POST',
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8',
+            },
             body: JSON.stringify(lessons)
         });
         
-        // עכשיו אנחנו באמת מקשיבים לתשובה של האקסל!
         const result = await response.json();
         
         if (result.status === 'success') {
-            alert("הנתונים נשמרו באקסל בהצלחה!");
+            alert("✅ הנתונים נשמרו באקסל בהצלחה!");
         } else {
-            console.error("Error from Apps Script:", result.message);
-            alert("הייתה בעיה בשמירה: " + result.message);
+            alert("❌ שגיאה מהאקסל: " + result.message);
         }
         
     } catch (error) {
-        console.error("Network error:", error);
-        alert("שגיאת תקשורת מול השרת של גוגל.");
+        console.error("Fetch error details:", error);
+        alert(`❌ שגיאת תקשורת!\n\nתיאור השגיאה: ${error.message}\n\nאם רשום "Failed to fetch", זה אומר שגוגל דחה את הבקשה. ודא שהאפסקריפט מוגדר כ-"Anyone" ולא כ-"Anyone with Google Account".`);
     } finally {
         setIsSaving(false);
     }
@@ -329,7 +318,6 @@ export default function App() {
   };
 
   const printReport = () => {
-    // מרחיב את הטבלה לפני הדפסה כדי שיראו הכל
     setIsTableExpanded(true);
     setTimeout(() => {
       window.print();
@@ -340,7 +328,6 @@ export default function App() {
     return <div dir="rtl" style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif' }}>טוען עיצוב...</div>;
   }
 
-  // סינון שיעורים להצגה (אחד אחרון או כולם)
   const displayedLessons = isTableExpanded ? lessons : lessons.slice(-1);
 
   return (
@@ -351,7 +338,11 @@ export default function App() {
         <div className="absolute top-0 left-0 w-full h-full bg-teal-500/10 pointer-events-none"></div>
         <div className="max-w-3xl mx-auto flex items-center justify-between relative z-10">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Leitner Tracker</h1>
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              Leitner Tracker
+              {/* תגית גרסה שנוכל לוודא שהקוד התעדכן */}
+              <span className="text-xs bg-teal-600 px-2 py-0.5 rounded-full font-medium tracking-wider">v2.1</span>
+            </h1>
             <p className="text-teal-400 text-sm mt-1 font-medium">לייטנר - דיווח חודשי</p>
           </div>
           <div className="flex items-center gap-3">
@@ -438,7 +429,7 @@ export default function App() {
           </button>
         </section>
 
-        {/* Print Header - Visible only when printing */}
+        {/* Print Header */}
         <div className="hidden print:block text-center mb-10 border-b-2 border-slate-800 pb-6">
           <h1 className="text-3xl font-bold text-slate-900">דוח שעות חודשי - Leitner Tracker</h1>
           <div className="flex justify-center gap-8 mt-4 text-slate-700 text-lg">
@@ -459,7 +450,6 @@ export default function App() {
                 </span>
               )}
             </div>
-            {/* כפתור כיווץ/הרחבה לטבלה */}
             {lessons.length > 1 && (
               <button 
                 onClick={() => setIsTableExpanded(!isTableExpanded)}
@@ -552,7 +542,6 @@ export default function App() {
                 <strong>מייל:</strong> 12natanel@gmail.com
               </p>
               
-              {/* בחירת תאריך להצהרה */}
               <div className="mt-4 flex items-center gap-3 print:hidden">
                 <label className="text-sm font-semibold text-slate-600">תאריך דיווח (סוף חודש):</label>
                 <input 
@@ -563,7 +552,6 @@ export default function App() {
                 />
               </div>
               
-              {/* תאריך מודפס (מופיע רק בהדפסה) */}
               <div className="hidden print:block mt-2">
                 <strong>תאריך דיווח:</strong> {declarationDate.split('-').reverse().join('/')}
               </div>
@@ -586,7 +574,6 @@ export default function App() {
               )}
             </div>
             
-            {/* Signature visible only in print */}
             <div className="hidden print:block mt-10 text-center w-64">
                 <p className="text-lg font-bold text-slate-800 mb-4 border-t-2 border-slate-300 pt-2">חתימת המורה (נתנאל):</p>
                 {teacherSignature ? (
